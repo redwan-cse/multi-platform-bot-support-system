@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile
+    container_name: bot-dashboard
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - JWT_SECRET=${JWT_SECRET:-changethissecretkey}
+      - JWT_EXPIRY=${JWT_EXPIRY:-15m}
+      - REFRESH_TOKEN_EXPIRY=${REFRESH_TOKEN_EXPIRY:-7d}
+      - DB_ENGINE=${DB_ENGINE:-SQLITE}
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-botdashboard}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_SSL=${DB_SSL:-false}
+      - DB_URL=${DB_URL:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - ENFORCE_HTTPS=${ENFORCE_HTTPS:-false}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-15}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
+      - SESSION_TIMEOUT=${SESSION_TIMEOUT:-15}
+    volumes:
+      - bot_data:/opt/app/data
+      - bot_logs:/opt/app/logs
+    networks:
+      - bot_network
+    depends_on:
+      - db
+      
+  # PostgreSQL service (optional, only used if DB_ENGINE=POSTGRESQL)
+  db:
+    image: postgres:14-alpine
+    container_name: bot-dashboard-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-botdashboard}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bot_network
+    # Comment out this service if using SQLite or external MongoDB
+
+volumes:
+  bot_data:
+  bot_logs:
+  postgres_data:
+
+networks:
+  bot_network:
+    driver: bridge
