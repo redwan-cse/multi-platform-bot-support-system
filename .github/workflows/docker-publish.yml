@@ -2,14 +2,16 @@ name: Docker Build and Publish
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   REGISTRY: docker.io
   IMAGE_NAME: redwancse/multi-platform-bot-support-system
+  API_PORT: 3000
+  VITE_PORT: 5173
 
 jobs:
   build:
@@ -21,22 +23,22 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract Docker metadata
+      - name: Extract metadata for Docker
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -44,16 +46,33 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=ref,event=branch
             type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Create env file for build
+        run: |
+          # Create a build-time env file with safe defaults
+          echo "PORT=${{ env.API_PORT }}" > .env.build
+          echo "NODE_ENV=production" >> .env.build
+          echo "LOG_LEVEL=info" >> .env.build
+          echo "ENFORCE_HTTPS=false" >> .env.build
+          echo "RATE_LIMIT_WINDOW=15" >> .env.build
+          echo "RATE_LIMIT_MAX=100" >> .env.build
+          echo "SESSION_TIMEOUT=15" >> .env.build
+          echo "DB_ENGINE=SQLITE" >> .env.build
 
       - name: Build and push Docker image
         id: build-and-push
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: ./deployment/docker/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            API_PORT=${{ env.API_PORT }}
+            VITE_PORT=${{ env.VITE_PORT }}
+            NODE_ENV=production
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -61,12 +80,12 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v2
         if: always()
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: "trivy-results.sarif"
